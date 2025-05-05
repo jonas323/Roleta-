@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Controle de Estratégias - Roleta</title>
+  <style>
+    body { font-family: Arial; margin: 20px; }
+    table, th, td { border: 1px solid #ccc; border-collapse: collapse; }
+    th, td { padding: 8px; text-align: center; }
+    th { background-color: #f0f0f0; }
+    .ganho { background-color: #d4fcd4; }
+    .perda { background-color: #fcd4d4; }
+    .stats { margin-top: 30px; }
+    .stats textarea { width: 100%; height: 80px; }
+    .stats div { margin: 5px 0; }
+    canvas { margin-top: 20px; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <h2>Controle de Apostas - Estratégias de Roleta</h2>
+
+  <label for="saldo">Saldo Inicial: </label>
+  <input type="number" id="saldo" value="1000">
+
+  <h3>Registro de Apostas</h3>
+  <table id="tabelaApostas">
+    <thead>
+      <tr>
+        <th>Rodada</th>
+        <th>Zona Apostada</th>
+        <th>Número Sorteado</th>
+        <th>Resultado</th>
+        <th>Valor Apostado</th>
+        <th>Saldo Atual</th>
+      </tr>
+    </thead>
+    <tbody id="corpoTabela"></tbody>
+  </table>
+
+  <button onclick="adicionarLinha()">Adicionar Rodada</button>
+
+  <div class="stats">
+    <h3>Previsão de Apostas</h3>
+    <p>Insira os resultados anteriores separados por vírgula (ex: 5,12,32,0,19):</p>
+    <textarea id="historico"></textarea>
+    <br>
+    <button onclick="carregarHistorico()">Carregar Histórico (JSON)</button>
+    <button onclick="calcularEstatisticas()">Calcular Estatísticas</button>
+    <div id="resultadoStats"></div>
+    <canvas id="zonaChart" width="400" height="200"></canvas>
+  </div>
+
+  <script>
+    let rodada = 1;
+    let saldo = parseFloat(document.getElementById('saldo').value);
+
+    function adicionarLinha() {
+      const corpo = document.getElementById('corpoTabela');
+      const linha = corpo.insertRow();
+      const col1 = linha.insertCell(0);
+      const col2 = linha.insertCell(1);
+      const col3 = linha.insertCell(2);
+      const col4 = linha.insertCell(3);
+      const col5 = linha.insertCell(4);
+      const col6 = linha.insertCell(5);
+
+      col1.innerText = rodada;
+      col2.innerHTML = '<select><option>Zona 1</option><option>Zona 2</option><option>Zona 3</option></select>';
+      col3.innerHTML = '<input type="number" min="0" max="36">';
+      col4.innerHTML = '<select onchange="atualizarSaldo(this)"><option value="ganho">Ganho</option><option value="perda">Perda</option></select>';
+      col5.innerHTML = '<input type="number" min="1" value="10">';
+      col6.innerText = saldo.toFixed(2);
+
+      rodada++;
+    }
+
+    function atualizarSaldo(select) {
+      const linha = select.parentElement.parentElement;
+      const valorInput = linha.cells[4].querySelector('input');
+      const valor = parseFloat(valorInput.value);
+
+      if (select.value === 'ganho') {
+        saldo += valor;
+        linha.className = 'ganho';
+      } else {
+        saldo -= valor;
+        linha.className = 'perda';
+      }
+
+      linha.cells[5].innerText = saldo.toFixed(2);
+    }
+
+    function carregarHistorico() {
+      fetch("historico.json")
+        .then(resp => resp.json())
+        .then(data => {
+          document.getElementById("historico").value = data.join(",");
+          calcularEstatisticas();
+        })
+        .catch(err => alert("Erro ao carregar histórico: " + err));
+    }
+
+    function calcularEstatisticas() {
+      const hist = document.getElementById('historico').value
+        .split(',')
+        .map(n => parseInt(n.trim()))
+        .filter(n => !isNaN(n) && n >= 0 && n <= 36);
+      if (hist.length === 0) {
+        alert('Insira resultados válidos.');
+        return;
+      }
+      const zonas = { 'Zona 1':0, 'Zona 2':0, 'Zona 3':0 };
+      hist.forEach(n => {
+        if (n === 0) return;
+        if (n >=1 && n<=12) zonas['Zona 1']++;
+        else if (n>=13 && n<=24) zonas['Zona 2']++;
+        else if (n>=25 && n<=36) zonas['Zona 3']++;
+      });
+      const zeroCount = hist.filter(n => n === 0).length;
+      const terminais = {};
+      for (let i=0; i<=9; i++) terminais[i] = 0;
+      hist.forEach(n => {
+        const d = n % 10;
+        terminais[d]++;
+      });
+      const freqNum = {};
+      hist.forEach(n => freqNum[n] = (freqNum[n]||0)+1);
+      const numerosOrdenados = Object.keys(freqNum).sort((a,b) => freqNum[b] - freqNum[a]);
+      const zonaQuente = Object.keys(zonas).reduce((a,b) => zonas[a]>zonas[b]?a:b);
+      const zonaFria = Object.keys(zonas).reduce((a,b) => zonas[a]<zonas[b]?a:b);
+      const termQuente = Object.keys(terminais).reduce((a,b) => terminais[a]>terminais[b]?a:b);
+      const termFrio = Object.keys(terminais).reduce((a,b) => terminais[a]<terminais[b]?a:b);
+      let html = '<h4>Resultados das Estatísticas</h4>';
+      html += `<div><strong>Zona Quente:</strong> ${zonaQuente} (${zonas[zonaQuente]} ocorrências)</div>`;
+      html += `<div><strong>Zona Fria:</strong> ${zonaFria} (${zonas[zonaFria]} ocorrências)</div>`;
+      html += `<div><strong>Contagem de Zero:</strong> ${zeroCount} ocorrência(s)</div>`;
+      html += `<div><strong>Terminal Quente:</strong> ${termQuente} (${terminais[termQuente]} ocorrências)</div>`;
+      html += `<div><strong>Terminal Frio:</strong> ${termFrio} (${terminais[termFrio]} ocorrências)</div>`;
+      html += '<div><strong>Números Mais Frequentes:</strong> ' + numerosOrdenados.slice(0,5).join(', ') + '</div>';
+      html += '<div><strong>Números Menos Frequentes:</strong> ' + numerosOrdenados.slice(-5).join(', ') + '</div>';
+      html += `<h5>Sugestões de Aposta:</h5>`;
+      html += `<div>Aposte na <em>Zona ${zonaFria.split(' ')[1]}</em> (quebrar tendência) ou na <em>${zonaQuente}</em> (seguir tendência)</div>`;
+      html += `<div>Aposte em terminais <em>${termFrio}</em> ou <em>${termQuente}</em></div>`;
+      html += `<div>Considere números quentes: ${numerosOrdenados.slice(0,3).join(', ')}</div>`;
+      document.getElementById('resultadoStats').innerHTML = html;
+
+      const ctx = document.getElementById('zonaChart').getContext('2d');
+      if (window.zonaChartInstance) window.zonaChartInstance.destroy();
+      window.zonaChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['Zona 1','Zona 2','Zona 3','Zero'],
+          datasets: [{
+            label: 'Frequência',
+            data: [zonas['Zona 1'], zonas['Zona 2'], zonas['Zona 3'], zeroCount]
+          }]
+        },
+        options: {
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+    }
+  </script>
+</body>
+</html>
